@@ -7,7 +7,7 @@
 
 class SimulationCPU {
 public:
-    void runSimulation(size_t num_points, IntegratorType iType);
+    float* runSimulation(size_t num_points, IntegratorType iType);
 
     void compileCode(std::string userCode);
 

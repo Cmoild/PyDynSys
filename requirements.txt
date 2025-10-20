@@ -1,2 +1,4 @@
 pybind11
 mypy
+numpy
+matplotlib

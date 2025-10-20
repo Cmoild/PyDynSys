@@ -18,7 +18,7 @@ void SimulationCPU::compileCode(std::string userCode) {
     }
 }
 
-void SimulationCPU::runSimulation(size_t num_points, IntegratorType iType) {
+float* SimulationCPU::runSimulation(size_t num_points, IntegratorType iType) {
     float* points = new float[3 * num_points];
     points[0] = x_init;
     points[1] = y_init;
@@ -29,8 +29,8 @@ void SimulationCPU::runSimulation(size_t num_points, IntegratorType iType) {
         case EULER: {
             for (size_t i = 0; i < num_points - 1; i++) {
                 integrator_euler_step(integrator);
-                std::cout << points[integrator->cur_step * 3] << ' ' << points[integrator->cur_step * 3 + 1] <<
-                    ' ' << points[integrator->cur_step * 3 + 2] << std::endl;
+                // std::cout << points[integrator->cur_step * 3] << ' ' << points[integrator->cur_step * 3 + 1] <<
+                //     ' ' << points[integrator->cur_step * 3 + 2] << std::endl;
             } 
         }
         break;
@@ -68,6 +68,5 @@ void SimulationCPU::runSimulation(size_t num_points, IntegratorType iType) {
         break;
     }
 
-    delete[] points;
-
+    return points;
 }
