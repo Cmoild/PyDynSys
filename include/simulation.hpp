@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <memory>
 #include <try_jit.hpp>
 #include <enums.hpp>
@@ -7,9 +8,14 @@
 
 class SimulationCPU {
 public:
-    float* runSimulation(size_t num_points, IntegratorType iType);
+    float* runSimulation(const size_t num_points, const IntegratorType iType);
 
     void compileCode(std::string userCode);
+
+    std::shared_ptr<std::vector<float>> createOneDimBifurcationDiagram(
+        const size_t num_points, const IntegratorType iType, const size_t parameterIdx, const size_t pointComponentIdx,
+        const size_t numOfConstants,
+        const float minValue, const float maxValue, const float deltaValue, const size_t numOfTransitionPoints);
 
 public:
     std::unique_ptr<llvm::orc::LLJIT> jit;
