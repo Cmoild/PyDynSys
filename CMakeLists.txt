@@ -32,7 +32,7 @@ message(STATUS "LLVM version: ${LLVM_VERSION}")
 message(STATUS "Using ClangConfig.cmake: ${Clang_CONFIG}")
 message(STATUS "Clang version: ${Clang_VERSION}")
 set_target_properties(dynsys PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
-target_link_libraries(dynsys PRIVATE dynsysBackend LLVM-20 clang-cpp clustering_header_lib OpenMP::OpenMP_CXX)
+target_link_libraries(dynsys PRIVATE dynsysBackend LLVM-21 clang-cpp clustering_header_lib OpenMP::OpenMP_CXX)
 
 
 set_target_properties(dynsys PROPERTIES

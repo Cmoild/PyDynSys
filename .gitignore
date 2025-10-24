@@ -6,3 +6,5 @@ build
 dynsys/*.so
 __pycache__
 test.py
+CPM*
+cpm-*

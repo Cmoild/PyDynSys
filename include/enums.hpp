@@ -8,7 +8,4 @@ enum IntegratorType {
     CD_METOD,
 };
 
-enum ComputeBackend {
-    CPU,
-    GPU
-};
+enum ComputeBackend { CPU, GPU };

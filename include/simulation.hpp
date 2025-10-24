@@ -4,20 +4,27 @@
 #include <try_jit.hpp>
 #include <enums.hpp>
 #include <array>
-
+#include <vector>
 
 class SimulationCPU {
-public:
+  public:
     float* runSimulation(const size_t num_points, const IntegratorType iType);
 
     void compileCode(std::string userCode);
 
     std::shared_ptr<std::vector<float>> createOneDimBifurcationDiagram(
-        const size_t num_points, const IntegratorType iType, const size_t parameterIdx, const size_t pointComponentIdx,
-        const size_t numOfConstants,
-        const float minValue, const float maxValue, const float deltaValue, const size_t numOfTransitionPoints);
+        const size_t num_points, const IntegratorType iType, const size_t parameterIdx,
+        const size_t pointComponentIdx, const size_t numOfConstants, const float minValue,
+        const float maxValue, const float deltaValue, const size_t numOfTransitionPoints);
 
-public:
+    std::shared_ptr<std::vector<float>> createTwoDimBifurcatonDiagram(
+        const size_t num_points, const IntegratorType iType, const size_t parameterIdx1,
+        const size_t parameterIdx2, const size_t pointComponentIdx, const size_t numOfConstants,
+        const float minValue1, const float maxValue1, const float deltaValue1,
+        const float minValue2, const float maxValue2, const float deltaValue2,
+        const size_t numOfTransitionPoints);
+
+  public:
     std::unique_ptr<llvm::orc::LLJIT> jit;
     std::unique_ptr<IntegratorCPU> integrator;
     float x_init = 1.f, y_init = 1.f, z_init = 1.f;
