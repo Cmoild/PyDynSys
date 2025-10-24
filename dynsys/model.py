@@ -1,28 +1,42 @@
 from . import _dynsys as core
 import numpy
+from numpy.typing import NDArray
+from typing import Literal
+from . import dsl
 
 
 class Model:
-    def __init__(self, dt: float, initial: list[float], params: numpy.ndarray):
-        assert len(initial) == 3, "invalid array length"
+    def __init__(
+        self, dt: float, initial: list[float], params: dict[str, float], code: str
+    ):
+        c_code, var_order, const_order = dsl.compile_dsl_to_c(code, params, "lorenz")
+        self.var_order: list[str] = var_order
+        self.const_order: list[str] = const_order
 
-        self.sim: core.SimulationCPU = core.SimulationCPU(dt, initial, params)
+        params_float_list: list[float] = []
+        for c in const_order:
+            params_float_list.append(params[c])
 
-        self.sim.compileCode("""
-        void lorenz(const float* X, const float* C, float* X_dot) {
-                        X_dot[0] = C[0] * (X[1] - X[0]);
-                        X_dot[1] = X[0] * (C[1] - X[2]) - X[1];
-                        X_dot[2] = X[0] * X[1] - C[2] * X[2];
-                    }
-        """)
-
-        self.num_constants: int = params.shape[0]
-
-    def run(self, steps: int, integrator_type: str) -> numpy.ndarray:
-        assert steps > 0, "steps must be positive int"
-        assert integrator_type in ["euler", "rk4", "midpoint", "euler-cromer"], (
-            "invalid integrator type"
+        self.sim: core.SimulationCPU = core.SimulationCPU(
+            dt, initial, numpy.array(params_float_list, dtype=numpy.float32)
         )
+
+        declared_math_functions = """
+            float cosf(float);
+            float sinf(float);
+            float expf(float);
+            float logf(float);
+        """
+        self.sim.compileCode(declared_math_functions + c_code)
+
+        self.num_constants: int = len(params.keys())
+
+    def run(
+        self,
+        steps: int,
+        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer"],
+    ) -> NDArray[numpy.float32]:
+        assert steps > 0, "steps must be positive int"
 
         select_integrator = {
             "euler": core.EULER,
@@ -33,19 +47,21 @@ class Model:
 
         return self.sim.runSimulation(steps, select_integrator[integrator_type])
 
-    def bifurcation(
+    def bifurcation1d(
         self,
         steps: int,
-        integrator_type: str,
+        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer"],
         num_transition_points: int,
-        parameter_idx: int,
-        point_component_idx: int,
+        constant_name: str,
+        variable_name: str,
         min_max_dt: tuple[float, float, float],
-    ):
+    ) -> NDArray[numpy.float32]:
         assert steps > 0, "steps must be positive int"
-        assert integrator_type in ["euler", "rk4", "midpoint", "euler-cromer"], (
-            "invalid integrator type"
-        )
+        assert constant_name in self.const_order, "invalid name of constant"
+        assert variable_name in self.var_order, "invalid name of variable"
+
+        parameter_idx: int = self.const_order.index(constant_name)
+        point_component_idx: int = self.var_order.index(variable_name)
 
         select_integrator = {
             "euler": core.EULER,
@@ -65,21 +81,34 @@ class Model:
             num_transition_points,
         )
 
-    def bifurcation2D(
+    def bifurcation2d(
         self,
         steps: int,
-        integrator_type: str,
+        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer"],
         num_transition_points: int,
-        parameter_idx1: int,
-        parameter_idx2: int,
-        point_component_idx: int,
-        min_max_dt1: tuple[float, float, float],
-        min_max_dt2: tuple[float, float, float],
-    ):
+        variable_name: str,
+        constants_dict: dict[str, tuple[float, float, float]],
+    ) -> NDArray[numpy.float32]:
         assert steps > 0, "steps must be positive int"
-        assert integrator_type in ["euler", "rk4", "midpoint", "euler-cromer"], (
-            "invalid integrator type"
+        assert len(constants_dict.keys()) == 2, "too many constants"
+
+        first_constant_name, second_constant_name = constants_dict.keys()
+
+        assert first_constant_name in self.const_order, (
+            "invalid name of the first constant"
         )
+        assert second_constant_name in self.const_order, (
+            "invalid name of the second constant"
+        )
+        assert variable_name in self.var_order, "invalid name of variable"
+
+        parameter_idx1 = self.const_order.index(first_constant_name)
+        parameter_idx2 = self.const_order.index(second_constant_name)
+
+        point_component_idx = self.var_order.index(variable_name)
+
+        min_max_dt1 = constants_dict[first_constant_name]
+        min_max_dt2 = constants_dict[second_constant_name]
 
         select_integrator = {
             "euler": core.EULER,
@@ -87,6 +116,7 @@ class Model:
             "midpoint": core.RUNGE_KUTTA_4,
             "euler-cromer": core.EULER_CROMER,
         }
+
         return self.sim.createTwoDimBifurcationDiagram(
             steps,
             select_integrator[integrator_type],
