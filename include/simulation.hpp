@@ -24,6 +24,14 @@ class SimulationCPU {
         const float minValue2, const float maxValue2, const float deltaValue2,
         const size_t numOfTransitionPoints);
 
+    std::shared_ptr<std::vector<float>> createOneDimLyapunovDiagram(
+        const std::unique_ptr<SimulationCPU> jacobianFx,
+        const std::unique_ptr<SimulationCPU> jacobianFy,
+        const std::unique_ptr<SimulationCPU> jacobianFz, const size_t num_points,
+        const IntegratorType iType, const size_t parameterIdx, const size_t pointComponentIdx,
+        const size_t numOfConstants, const float minValue, const float maxValue,
+        const float deltaValue, const size_t numOfTransitionPoints);
+
   public:
     std::unique_ptr<llvm::orc::LLJIT> jit;
     std::unique_ptr<IntegratorCPU> integrator;

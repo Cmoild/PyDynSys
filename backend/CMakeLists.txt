@@ -1,7 +1,8 @@
-project(dynsysBackend LANGUAGES CXX)
+project(dynsysBackend LANGUAGES CXX ASM)
 
 add_library(dynsysBackend 
     src/cpu/integrator.cpp
+    src/cpu/lu_chen.S
 )
 
 target_include_directories(dynsysBackend 

@@ -1,3 +1,5 @@
+import matplotlib
+from matplotlib import pyplot as plt
 from . import _dynsys as core
 import numpy
 from numpy.typing import NDArray
@@ -34,7 +36,8 @@ class Model:
     def run(
         self,
         steps: int,
-        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer"],
+        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer", "cd"],
+        show_plot: bool = False,
     ) -> NDArray[numpy.float32]:
         assert steps > 0, "steps must be positive int"
 
@@ -43,14 +46,44 @@ class Model:
             "rk4": core.RUNGE_KUTTA_4,
             "midpoint": core.RUNGE_KUTTA_4,
             "euler-cromer": core.EULER_CROMER,
+            "cd": core.CD,
         }
 
-        return self.sim.runSimulation(steps, select_integrator[integrator_type])
+        traj = self.sim.runSimulation(steps, select_integrator[integrator_type])
+
+        if not show_plot:
+            return traj
+
+        fig = plt.figure()
+        ax = fig.add_subplot(projection="3d")
+        if integrator_type != "cd":
+            ax.plot(
+                traj[:, self.var_order.index("x")],
+                traj[:, self.var_order.index("y")],
+                traj[:, self.var_order.index("z")],
+                c="r",
+                linewidth=0.5,
+            )
+        else:
+            ax.plot(
+                traj[:, 0],
+                traj[:, 1],
+                traj[:, 2],
+                c="r",
+                linewidth=0.5,
+            )
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        ax.set_title(f"Attractor, method: {integrator_type}")
+
+        plt.show()
+        return traj
 
     def bifurcation1d(
         self,
         steps: int,
-        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer"],
+        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer", "cd"],
         num_transition_points: int,
         constant_name: str,
         variable_name: str,
@@ -60,14 +93,23 @@ class Model:
         assert constant_name in self.const_order, "invalid name of constant"
         assert variable_name in self.var_order, "invalid name of variable"
 
-        parameter_idx: int = self.const_order.index(constant_name)
-        point_component_idx: int = self.var_order.index(variable_name)
+        parameter_idx: int = (
+            self.const_order.index(constant_name)
+            if integrator_type != "cd"
+            else ["a", "b", "c", "u"].index(constant_name)
+        )
+        point_component_idx: int = (
+            self.var_order.index(variable_name)
+            if integrator_type != "cd"
+            else ["x", "y", "z"].index(variable_name)
+        )
 
         select_integrator = {
             "euler": core.EULER,
             "rk4": core.RUNGE_KUTTA_4,
             "midpoint": core.RUNGE_KUTTA_4,
             "euler-cromer": core.EULER_CROMER,
+            "cd": core.CD,
         }
         return self.sim.createOneDimBifurcationDiagram(
             steps,
