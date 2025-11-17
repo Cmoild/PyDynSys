@@ -24,13 +24,12 @@ class SimulationCPU {
         const float minValue2, const float maxValue2, const float deltaValue2,
         const size_t numOfTransitionPoints);
 
-    std::shared_ptr<std::vector<float>> createOneDimLyapunovDiagram(
-        const std::unique_ptr<SimulationCPU> jacobianFx,
-        const std::unique_ptr<SimulationCPU> jacobianFy,
-        const std::unique_ptr<SimulationCPU> jacobianFz, const size_t num_points,
-        const IntegratorType iType, const size_t parameterIdx, const size_t pointComponentIdx,
-        const size_t numOfConstants, const float minValue, const float maxValue,
-        const float deltaValue, const size_t numOfTransitionPoints);
+    std::shared_ptr<std::vector<float>>
+    createOneDimLyapunovDiagram(const size_t num_points, const IntegratorType iType,
+                                const size_t parameterIdx, const size_t numOfConstants,
+                                const float minValue, const float maxValue, const float deltaValue,
+                                const std::array<size_t, 3> xyzOrder,
+                                const std::array<size_t, 4> constOrder);
 
   public:
     std::unique_ptr<llvm::orc::LLJIT> jit;
@@ -38,6 +37,7 @@ class SimulationCPU {
     float x_init = 1.f, y_init = 1.f, z_init = 1.f;
     float dt = 0.001f;
     float x_min, x_max, y_min, y_max, z_min, z_max;
+    std::vector<float> constants;
 
-    SimulationCPU(float deltaTime, std::array<float, 3> initConditions, float* C);
+    SimulationCPU(float deltaTime, std::array<float, 3> initConditions, float* C, size_t numConsts);
 };

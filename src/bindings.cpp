@@ -5,6 +5,7 @@
 #include <array>
 #include <simulation.hpp>
 #include <enums.hpp>
+#include <iostream>
 
 namespace py = pybind11;
 
@@ -24,7 +25,7 @@ PYBIND11_MODULE(_dynsys, m) {
                  if (params.ndim() != 1)
                      throw std::runtime_error("params must be a 1D array");
                  float* C = static_cast<float*>(params.request().ptr);
-                 return std::make_unique<SimulationCPU>(dt, init, C);
+                 return std::make_unique<SimulationCPU>(dt, init, C, params.size());
              }),
              py::arg("dt"), py::arg("init"), py::arg("params"),
              R"pbdoc(
@@ -64,11 +65,11 @@ PYBIND11_MODULE(_dynsys, m) {
                     num_points, iType, parameterIdx, pointComponentIdx, numOfConstants, minValue,
                     maxValue, deltaValue, numOfTransitionPoints);
                 ssize_t rows = data->size() / 2, cols = 2;
-                py::capsule owner(new std::shared_ptr<std::vector<float>>(data), [](void* p) {
-                    delete reinterpret_cast<std::shared_ptr<std::vector<float>>*>(p);
-                });
+                // py::capsule owner(new std::shared_ptr<std::vector<float>>(data), [](void* p) {
+                //     delete reinterpret_cast<std::shared_ptr<std::vector<float>>*>(p);
+                // });
                 return py::array(py::dtype::of<float>(), {rows, cols},
-                                 {sizeof(float) * 2, sizeof(float)}, data->data(), owner);
+                                 {sizeof(float) * 2, sizeof(float)}, data->data() /*, owner */);
             },
             py::arg("steps"), py::arg("method"), py::arg("parameter_idx"),
             py::arg("point_component_idx"), py::arg("num_of_constants"), py::arg("min_value"),
@@ -90,12 +91,12 @@ PYBIND11_MODULE(_dynsys, m) {
                     deltaValue2, numOfTransitionPoints);
                 size_t rows = (size_t)((maxValue2 - minValue2) / deltaValue2) + 1;
                 size_t cols = (size_t)((maxValue1 - minValue1) / deltaValue1) + 1;
-                py::capsule owner(new std::shared_ptr<std::vector<float>>(data), [](void* p) {
-                    delete reinterpret_cast<std::shared_ptr<std::vector<float>>*>(p);
-                });
+                // py::capsule owner(new std::shared_ptr<std::vector<float>>(data), [](void* p) {
+                //     delete reinterpret_cast<std::shared_ptr<std::vector<float>>*>(p);
+                // });
                 return py::array(py::dtype::of<float>(), {rows, cols, static_cast<size_t>(1)},
-                                 {sizeof(float) * cols, sizeof(float), sizeof(float)}, data->data(),
-                                 owner);
+                                 {sizeof(float) * cols, sizeof(float), sizeof(float)}, data->data() /*,
+                                 owner */);
             },
             py::arg("steps"), py::arg("method"), py::arg("parameter_idx1"),
             py::arg("parameter_idx2"), py::arg("point_component_idx"), py::arg("num_of_constants"),
@@ -105,5 +106,25 @@ PYBIND11_MODULE(_dynsys, m) {
             R"pbdoc(
                 Make a 2D bifurcation diagram
                 Returns a NumPy array of shape (num_first_constant_vals, num_second_constant_vals, 1)
+            )pbdoc")
+        .def(
+            "createOneDimLyapunovDiagram",
+            [](SimulationCPU& self, const size_t num_points, const IntegratorType iType,
+               const size_t parameterIdx, const size_t numOfConstants, const float minValue,
+               const float maxValue, const float deltaValue, const std::array<size_t, 3> xyzOrder,
+               const std::array<size_t, 4> constOrder) {
+                auto data = self.createOneDimLyapunovDiagram(num_points, iType, parameterIdx,
+                                                             numOfConstants, minValue, maxValue,
+                                                             deltaValue, xyzOrder, constOrder);
+                ssize_t rows = data->size() / 2, cols = 2;
+                return py::array(py::dtype::of<float>(), {rows, cols},
+                                 {sizeof(float) * 2, sizeof(float)}, data->data());
+            },
+            py::arg("steps"), py::arg("method"), py::arg("parameter_idx"),
+            py::arg("num_of_constants"), py::arg("min_value"), py::arg("max_value"),
+            py::arg("delta_value"), py::arg("xyz_order"), py::arg("const_order"),
+            R"pbdoc(
+                Make a 1D lyapunov diagram
+                Returns a NumPy array of shape (n, 2)
             )pbdoc");
 }

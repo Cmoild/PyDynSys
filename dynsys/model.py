@@ -4,6 +4,7 @@ from . import _dynsys as core
 import numpy
 from numpy.typing import NDArray
 from typing import Literal
+import warnings
 from . import dsl
 
 
@@ -14,6 +15,7 @@ class Model:
         c_code, var_order, const_order = dsl.compile_dsl_to_c(code, params, "lorenz")
         self.var_order: list[str] = var_order
         self.const_order: list[str] = const_order
+        self.code: str = code
 
         params_float_list: list[float] = []
         for c in const_order:
@@ -126,7 +128,7 @@ class Model:
     def bifurcation2d(
         self,
         steps: int,
-        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer"],
+        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer", "cd"],
         num_transition_points: int,
         variable_name: str,
         constants_dict: dict[str, tuple[float, float, float]],
@@ -144,10 +146,22 @@ class Model:
         )
         assert variable_name in self.var_order, "invalid name of variable"
 
-        parameter_idx1 = self.const_order.index(first_constant_name)
-        parameter_idx2 = self.const_order.index(second_constant_name)
+        parameter_idx1 = (
+            self.const_order.index(first_constant_name)
+            if integrator_type != "cd"
+            else ["a", "b", "c", "u"].index(first_constant_name)
+        )
+        parameter_idx2 = (
+            self.const_order.index(second_constant_name)
+            if integrator_type != "cd"
+            else ["a", "b", "c", "u"].index(second_constant_name)
+        )
 
-        point_component_idx = self.var_order.index(variable_name)
+        point_component_idx = (
+            self.var_order.index(variable_name)
+            if integrator_type != "cd"
+            else ["x", "y", "z"].index(variable_name)
+        )
 
         min_max_dt1 = constants_dict[first_constant_name]
         min_max_dt2 = constants_dict[second_constant_name]
@@ -157,6 +171,7 @@ class Model:
             "rk4": core.RUNGE_KUTTA_4,
             "midpoint": core.RUNGE_KUTTA_4,
             "euler-cromer": core.EULER_CROMER,
+            "cd": core.CD,
         }
 
         return self.sim.createTwoDimBifurcationDiagram(
@@ -173,4 +188,71 @@ class Model:
             min_max_dt2[1],
             min_max_dt2[2],
             num_transition_points,
+        )
+
+    def lyapunov1d(
+        self,
+        steps: int,
+        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer", "cd"],
+        constant_name: str,
+        min_max_dt: tuple[float, float, float],
+    ) -> NDArray[numpy.float32]:
+        warnings.warn("Works only with Lu Chen system", UserWarning, 2)
+        if (
+            self.code
+            != """
+x' = a * (y - x)
+y' = (1 - z) * x + c * y + u
+z' = x * y - b * z
+"""
+        ):
+            raise NotImplementedError
+
+        assert steps > 0, "steps must be positive int"
+        assert constant_name in self.const_order, "invalid name of constant"
+
+        parameter_idx: int = (
+            self.const_order.index(constant_name)
+            if integrator_type != "cd"
+            else ["a", "b", "c", "u"].index(constant_name)
+        )
+
+        select_integrator = {
+            "euler": core.EULER,
+            "rk4": core.RUNGE_KUTTA_4,
+            "midpoint": core.RUNGE_KUTTA_4,
+            "euler-cromer": core.EULER_CROMER,
+            "cd": core.CD,
+        }
+
+        xyz_order = (
+            [
+                self.var_order.index("x"),
+                self.var_order.index("y"),
+                self.var_order.index("z"),
+            ]
+            if integrator_type != "cd"
+            else [0, 1, 2]
+        )
+        const_order = (
+            [
+                self.const_order.index("a"),
+                self.const_order.index("b"),
+                self.const_order.index("c"),
+                self.const_order.index("u"),
+            ]
+            if integrator_type != "cd"
+            else [0, 1, 2, 3]
+        )
+
+        return self.sim.createOneDimLyapunovDiagram(
+            steps,
+            select_integrator[integrator_type],
+            parameter_idx,
+            self.num_constants,
+            min_max_dt[0],
+            min_max_dt[1],
+            min_max_dt[2],
+            xyz_order,
+            const_order,
         )
