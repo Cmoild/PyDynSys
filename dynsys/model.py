@@ -225,25 +225,17 @@ z' = x * y - b * z
             "cd": core.CD,
         }
 
-        xyz_order = (
-            [
-                self.var_order.index("x"),
-                self.var_order.index("y"),
-                self.var_order.index("z"),
-            ]
-            if integrator_type != "cd"
-            else [0, 1, 2]
-        )
-        const_order = (
-            [
-                self.const_order.index("a"),
-                self.const_order.index("b"),
-                self.const_order.index("c"),
-                self.const_order.index("u"),
-            ]
-            if integrator_type != "cd"
-            else [0, 1, 2, 3]
-        )
+        xyz_order = [
+            self.var_order.index("x"),
+            self.var_order.index("y"),
+            self.var_order.index("z"),
+        ]
+        const_order = [
+            self.const_order.index("a"),
+            self.const_order.index("b"),
+            self.const_order.index("c"),
+            self.const_order.index("u"),
+        ]
 
         return self.sim.createOneDimLyapunovDiagram(
             steps,
@@ -253,6 +245,90 @@ z' = x * y - b * z
             min_max_dt[0],
             min_max_dt[1],
             min_max_dt[2],
+            xyz_order,
+            const_order,
+        )
+
+    def lyapunov2d(
+        self,
+        steps: int,
+        integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer", "cd"],
+        variable_name: str,
+        constants_dict: dict[str, tuple[float, float, float]],
+    ) -> NDArray[numpy.float32]:
+        warnings.warn("Works only with Lu Chen system", UserWarning, 2)
+        if (
+            self.code
+            != """
+x' = a * (y - x)
+y' = (1 - z) * x + c * y + u
+z' = x * y - b * z
+"""
+        ):
+            raise NotImplementedError
+        assert steps > 0, "steps must be positive int"
+        assert len(constants_dict.keys()) == 2, "too many constants"
+
+        first_constant_name, second_constant_name = constants_dict.keys()
+
+        assert first_constant_name in self.const_order, (
+            "invalid name of the first constant"
+        )
+        assert second_constant_name in self.const_order, (
+            "invalid name of the second constant"
+        )
+        assert variable_name in self.var_order, "invalid name of variable"
+
+        parameter_idx1 = (
+            self.const_order.index(first_constant_name)
+            if integrator_type != "cd"
+            else ["a", "b", "c", "u"].index(first_constant_name)
+        )
+        parameter_idx2 = (
+            self.const_order.index(second_constant_name)
+            if integrator_type != "cd"
+            else ["a", "b", "c", "u"].index(second_constant_name)
+        )
+
+        point_component_idx = (
+            self.var_order.index(variable_name)
+            if integrator_type != "cd"
+            else ["x", "y", "z"].index(variable_name)
+        )
+
+        min_max_dt1 = constants_dict[first_constant_name]
+        min_max_dt2 = constants_dict[second_constant_name]
+
+        select_integrator = {
+            "euler": core.EULER,
+            "rk4": core.RUNGE_KUTTA_4,
+            "midpoint": core.RUNGE_KUTTA_4,
+            "euler-cromer": core.EULER_CROMER,
+            "cd": core.CD,
+        }
+        xyz_order = [
+            self.var_order.index("x"),
+            self.var_order.index("y"),
+            self.var_order.index("z"),
+        ]
+        const_order = [
+            self.const_order.index("a"),
+            self.const_order.index("b"),
+            self.const_order.index("c"),
+            self.const_order.index("u"),
+        ]
+        return self.sim.createTwoDimLyapunovDiagram(
+            steps,
+            select_integrator[integrator_type],
+            parameter_idx1,
+            parameter_idx2,
+            self.num_constants,
+            min_max_dt1[0],
+            min_max_dt1[1],
+            min_max_dt1[2],
+            min_max_dt2[0],
+            min_max_dt2[1],
+            min_max_dt2[2],
             xyz_order,
             const_order,
         )

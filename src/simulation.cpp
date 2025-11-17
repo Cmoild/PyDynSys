@@ -259,13 +259,13 @@ static inline float computeLambdaForLuChen(std::unique_ptr<IntegratorCPU>& integ
     float cur_y = integrator->points[idx + xyzOrder[1]];
     float cur_z = integrator->points[idx + xyzOrder[2]];
 
+    float varSysStep = integrator->step;
     // dt * Jacobian @ varSysVect
     float tmp[3] = {
-        integrator->step * (-a * varSysVector[0] + a * varSysVector[1]),
-        integrator->step *
+        varSysStep * (-a * varSysVector[0] + a * varSysVector[1]),
+        varSysStep *
             ((1.f - cur_z) * varSysVector[0] + c * varSysVector[1] - cur_x * varSysVector[2]),
-        integrator->step *
-            (cur_y * varSysVector[0] + cur_x * varSysVector[1] - b * varSysVector[2]),
+        varSysStep * (cur_y * varSysVector[0] + cur_x * varSysVector[1] - b * varSysVector[2]),
     };
 
     varSysVector[0] += tmp[0];
@@ -278,6 +278,11 @@ static inline float computeLambdaForLuChen(std::unique_ptr<IntegratorCPU>& integ
     varSysVector[0] /= norm;
     varSysVector[1] /= norm;
     varSysVector[2] /= norm;
+
+    // if (std::isnan(std::logf(std::max<float>(norm, 1.)))) {
+    //     std::cout << norm << std::endl;
+    //     std::cout << varSysVector[0] << ' ' << varSysVector[1] << ' ' << varSysVector[2];
+    // }
 
     return std::logf(norm);
 }
@@ -360,5 +365,93 @@ std::shared_ptr<std::vector<float>> SimulationCPU::createOneDimLyapunovDiagram(
                 lambdaSum / ((float)localIntegrator->cur_step * localIntegrator->step);
         }
     }
+    return out;
+}
+
+std::shared_ptr<std::vector<float>> SimulationCPU::createTwoDimLyapunovDiagram(
+    const size_t num_points, const IntegratorType iType, const size_t parameterIdx1,
+    const size_t parameterIdx2, const size_t numOfConstants, const float minValue1,
+    const float maxValue1, const float deltaValue1, const float minValue2, const float maxValue2,
+    const float deltaValue2, const std::array<size_t, 3> xyzOrder,
+    const std::array<size_t, 4> constOrder) {
+    size_t numFirstValues = (size_t)((maxValue1 - minValue1) / deltaValue1) + 1;
+    size_t numSecondValues = (size_t)((maxValue2 - minValue2) / deltaValue2) + 1;
+    auto out = std::make_shared<std::vector<float>>(numFirstValues * numSecondValues);
+    std::default_random_engine generator(42);
+    std::normal_distribution<float> distribution(0.f, 1.f);
+    for (size_t threadOuterLoop = 0; threadOuterLoop < numFirstValues; threadOuterLoop++) {
+        float curFirstConstant = minValue1 + (float)threadOuterLoop * deltaValue1;
+        size_t numThreads = numSecondValues - 1;
+#pragma omp parallel for
+        for (size_t thread = 0; thread < numThreads + 1; thread++) {
+            float curSecondConstant = minValue2 + (float)thread * deltaValue2;
+            std::unique_ptr<IntegratorCPU> localIntegrator = std::make_unique<IntegratorCPU>();
+            localIntegrator->C = new float[numOfConstants];
+            std::memcpy(localIntegrator->C, integrator->C, sizeof(float) * numOfConstants);
+            localIntegrator->cur_step = 0;
+            localIntegrator->step = integrator->step;
+            localIntegrator->func = integrator->func;
+            localIntegrator->C[parameterIdx1] = curFirstConstant;
+            localIntegrator->C[parameterIdx2] = curSecondConstant;
+            float* points = new float[3 * num_points];
+            points[0] = x_init;
+            points[1] = y_init;
+            points[2] = z_init;
+
+            localIntegrator->points = points;
+            float varSysVector[3] = {
+                distribution(generator),
+                distribution(generator),
+                distribution(generator),
+            };
+            float lambdaSum = 0.f;
+            switch (iType) {
+            case EULER: {
+                for (size_t i = 0; i < num_points - 1; i++) {
+                    integrator_euler_step(localIntegrator);
+                    lambdaSum +=
+                        computeLambdaForLuChen(localIntegrator, xyzOrder, constOrder, varSysVector);
+                }
+            } break;
+            case RUNGE_KUTTA_4: {
+                for (size_t i = 0; i < num_points - 1; i++) {
+                    integrator_rk4_step(localIntegrator);
+                    lambdaSum +=
+                        computeLambdaForLuChen(localIntegrator, xyzOrder, constOrder, varSysVector);
+                }
+            } break;
+            case MIDPOINT: {
+                for (size_t i = 0; i < num_points - 1; i++) {
+                    integrator_midpoint_step(localIntegrator);
+                    lambdaSum +=
+                        computeLambdaForLuChen(localIntegrator, xyzOrder, constOrder, varSysVector);
+                }
+            } break;
+            case EULER_CROMER: {
+                for (size_t i = 0; i < num_points - 1; i++) {
+                    integrator_euler_cromer_step(localIntegrator);
+                    lambdaSum +=
+                        computeLambdaForLuChen(localIntegrator, xyzOrder, constOrder, varSysVector);
+                }
+            } break;
+            case CD_METOD: {
+                for (size_t i = 0; i < num_points - 1; i++) {
+                    integrator_cd_step(localIntegrator);
+                    lambdaSum +=
+                        computeLambdaForLuChen(localIntegrator, xyzOrder, constOrder, varSysVector);
+                }
+            } break;
+            }
+
+            (*out)[thread * numFirstValues + threadOuterLoop] =
+                lambdaSum / ((float)localIntegrator->cur_step * localIntegrator->step);
+
+            delete[] localIntegrator->C;
+            delete[] points;
+        }
+        std::cout << "\r" << threadOuterLoop + 1 << "/" << numFirstValues;
+        std::fflush(stdout);
+    }
+    std::cout << std::endl;
     return out;
 }
