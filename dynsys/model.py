@@ -16,6 +16,7 @@ class Model:
         self.var_order: list[str] = var_order
         self.const_order: list[str] = const_order
         self.code: str = code
+        self.params: dict[str, float] = params
 
         params_float_list: list[float] = []
         for c in const_order:
@@ -196,18 +197,8 @@ class Model:
         integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer", "cd"],
         constant_name: str,
         min_max_dt: tuple[float, float, float],
+        var_sys_code: str,
     ) -> NDArray[numpy.float32]:
-        warnings.warn("Works only with Lu Chen system", UserWarning, 2)
-        if (
-            self.code
-            != """
-x' = a * (y - x)
-y' = (1 - z) * x + c * y + u
-z' = x * y - b * z
-"""
-        ):
-            raise NotImplementedError
-
         assert steps > 0, "steps must be positive int"
         assert constant_name in self.const_order, "invalid name of constant"
 
@@ -230,13 +221,14 @@ z' = x * y - b * z
             self.var_order.index("y"),
             self.var_order.index("z"),
         ]
-        const_order = [
-            self.const_order.index("a"),
-            self.const_order.index("b"),
-            self.const_order.index("c"),
-            self.const_order.index("u"),
-        ]
 
+        var_sys_consts = self.params | {name: 0.0 for name in self.var_order}
+
+        c_code, var_order, const_order = dsl.compile_dsl_to_c(
+            var_sys_code, var_sys_consts, func_name="varSysFunc"
+        )
+        assert const_order[:-3] == self.const_order, "incorrect output"
+        assert const_order[-3:] == self.var_order, "incorrect ouput"
         return self.sim.createOneDimLyapunovDiagram(
             steps,
             select_integrator[integrator_type],
@@ -246,7 +238,7 @@ z' = x * y - b * z
             min_max_dt[1],
             min_max_dt[2],
             xyz_order,
-            const_order,
+            c_code,
         )
 
     def lyapunov2d(
@@ -255,17 +247,8 @@ z' = x * y - b * z
         integrator_type: Literal["euler", "rk4", "midpoint", "euler-cromer", "cd"],
         variable_name: str,
         constants_dict: dict[str, tuple[float, float, float]],
+        var_sys_code: str,
     ) -> NDArray[numpy.float32]:
-        warnings.warn("Works only with Lu Chen system", UserWarning, 2)
-        if (
-            self.code
-            != """
-x' = a * (y - x)
-y' = (1 - z) * x + c * y + u
-z' = x * y - b * z
-"""
-        ):
-            raise NotImplementedError
         assert steps > 0, "steps must be positive int"
         assert len(constants_dict.keys()) == 2, "too many constants"
 
@@ -311,12 +294,13 @@ z' = x * y - b * z
             self.var_order.index("y"),
             self.var_order.index("z"),
         ]
-        const_order = [
-            self.const_order.index("a"),
-            self.const_order.index("b"),
-            self.const_order.index("c"),
-            self.const_order.index("u"),
-        ]
+        var_sys_consts = self.params | {name: 0.0 for name in self.var_order}
+
+        c_code, var_order, const_order = dsl.compile_dsl_to_c(
+            var_sys_code, var_sys_consts, func_name="varSysFunc"
+        )
+        assert const_order[:-3] == self.const_order, "incorrect output"
+        assert const_order[-3:] == self.var_order, "incorrect ouput"
         return self.sim.createTwoDimLyapunovDiagram(
             steps,
             select_integrator[integrator_type],
@@ -330,5 +314,5 @@ z' = x * y - b * z
             min_max_dt2[1],
             min_max_dt2[2],
             xyz_order,
-            const_order,
+            c_code,
         )

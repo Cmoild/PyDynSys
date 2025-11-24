@@ -34,7 +34,8 @@ llvm::Expected<std::unique_ptr<llvm::Module>> compileToIR(std::string& codeStrin
     return irAction.takeModule();
 }
 
-int try_jit(std::string& code, integratedFunc& func, std::unique_ptr<llvm::orc::LLJIT>& jit) {
+int try_jit(std::string& code, integratedFunc& func, std::unique_ptr<llvm::orc::LLJIT>& jit,
+            const std::string name) {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
 
@@ -64,7 +65,7 @@ int try_jit(std::string& code, integratedFunc& func, std::unique_ptr<llvm::orc::
         return 1;
     }
 
-    auto sym = jit->lookup("lorenz");
+    auto sym = jit->lookup(name);
     if (!sym) {
         llvm::Error err = llvm::handleErrors(sym.takeError());
         return 1;

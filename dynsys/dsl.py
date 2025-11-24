@@ -17,7 +17,10 @@ GRAMMAR = r"""
     ?pow: atom "^" pow     -> pow
         | atom
 
-    ?atom: NUMBER          -> number
+    SIGN: "+" | "-"
+
+    ?atom: SIGN atom -> unary
+         | NUMBER          -> number
          | NAME "(" args? ")" -> func
          | NAME             -> var
          | "(" expr ")"
@@ -25,7 +28,7 @@ GRAMMAR = r"""
     args: expr ("," expr)*
 
     %import common.CNAME -> NAME
-    %import common.SIGNED_NUMBER -> NUMBER
+    %import common.NUMBER -> NUMBER
     %import common.WS
     %ignore WS
 """
@@ -89,6 +92,15 @@ class ToC(Transformer[list[tuple[str, str]]]):
 
     def pow(self, a, b):
         return f"powf({a}, {b})"
+
+    def unary(self, sign, value):
+        # sign — Token('-', '-') или Token('+', '+')
+        s = str(sign)
+        if s == "-":
+            return f"(-{value})"
+        else:
+            # unary plus
+            return f"({value})"
 
     def number(self, token):
         s = str(token)

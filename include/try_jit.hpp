@@ -6,4 +6,5 @@
 #include <backend/cpu/integrator_cpu.hpp>
 #include <memory>
 
-int try_jit(std::string& code, integratedFunc& func, std::unique_ptr<llvm::orc::LLJIT>& jit);
+int try_jit(std::string& code, integratedFunc& func, std::unique_ptr<llvm::orc::LLJIT>& jit,
+            const std::string name = "lorenz");
