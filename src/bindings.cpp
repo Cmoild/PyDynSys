@@ -64,19 +64,20 @@ PYBIND11_MODULE(_dynsys, m) {
                 auto data = self.createOneDimBifurcationDiagram(
                     num_points, iType, parameterIdx, pointComponentIdx, numOfConstants, minValue,
                     maxValue, deltaValue, numOfTransitionPoints);
-                ssize_t rows = data->size() / 2, cols = 2;
+                ssize_t rows = data->size() / 3, cols = 3;
                 // py::capsule owner(new std::shared_ptr<std::vector<float>>(data), [](void* p) {
                 //     delete reinterpret_cast<std::shared_ptr<std::vector<float>>*>(p);
                 // });
                 return py::array(py::dtype::of<float>(), {rows, cols},
-                                 {sizeof(float) * 2, sizeof(float)}, data->data() /*, owner */);
+                                 {sizeof(float) * 3, sizeof(float)}, data->data() /*, owner */);
             },
             py::arg("steps"), py::arg("method"), py::arg("parameter_idx"),
             py::arg("point_component_idx"), py::arg("num_of_constants"), py::arg("min_value"),
             py::arg("max_value"), py::arg("delta_value"), py::arg("num_transition_points"),
             R"pbdoc(
                 Make a 1D bifurcation diagram
-                Returns a NumPy array of shape (n, 2)
+                Returns a NumPy array of shape (n, 3)
+                Row: [cur_constant, peak_val, interval_val]
             )pbdoc")
         .def(
             "createTwoDimBifurcationDiagram",

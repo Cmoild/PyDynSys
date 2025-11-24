@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <simulation.hpp>
@@ -68,6 +69,46 @@ float* SimulationCPU::runSimulation(const size_t num_points, const IntegratorTyp
     return points;
 }
 
+static inline int peakFinder(const float* points, const size_t num_points,
+                             const size_t numOfTransitionPoints, const size_t pointComponentIdx,
+                             std::unique_ptr<IntegratorCPU>& localIntegrator,
+                             std::vector<float>& peakVals, std::vector<float>& intervalVals) {
+    float latestPeakTime;
+    bool firstPeakReady = false;
+    // for (size_t i = 0; i < 15; i++) {
+    //     std::cout << points[i] << ' ';
+    //     if ((i + 1) % 3 == 0)
+    //         std::cout << std::endl;
+    // }
+    for (size_t i = numOfTransitionPoints; i < num_points - 1; i++) {
+        // std::cout << points[(i - 1) * 3 + pointComponentIdx] << ' '
+        //           << points[i * 3 + pointComponentIdx] << ' '
+        //           << points[(i + 1) * 3 + pointComponentIdx] << std::endl;
+        if (std::isnan(points[i * 3 + pointComponentIdx]) ||
+            std::isinf(points[i * 3 + pointComponentIdx]))
+            return 1;
+        if (points[i * 3 + pointComponentIdx] > points[(i - 1) * 3 + pointComponentIdx] &&
+            points[i * 3 + pointComponentIdx] > points[(i + 1) * 3 + pointComponentIdx]) {
+            // std::cout << "and what???" << std::endl;
+            if (peakVals.size() == 0 && !firstPeakReady) {
+                // firstPeakVal = points[i * 3 + pointComponentIdx];
+                latestPeakTime = static_cast<float>(i) * localIntegrator->step;
+                firstPeakReady = true;
+            } else {
+                peakVals.push_back(points[i * 3 + pointComponentIdx]);
+                intervalVals.push_back(static_cast<float>(i) * localIntegrator->step -
+                                       latestPeakTime);
+                latestPeakTime = static_cast<float>(i) * localIntegrator->step;
+            }
+        }
+    }
+
+    if (peakVals.size() == 0)
+        return 2;
+
+    return 0;
+}
+
 std::shared_ptr<std::vector<float>> SimulationCPU::createOneDimBifurcationDiagram(
     const size_t num_points, const IntegratorType iType, const size_t parameterIdx,
     const size_t pointComponentIdx, const size_t numOfConstants, const float minValue,
@@ -119,42 +160,18 @@ std::shared_ptr<std::vector<float>> SimulationCPU::createOneDimBifurcationDiagra
             }
         } break;
         }
-        NDArray<float, 2> dbscanPoints({num_points - numOfTransitionPoints, 1});
-        for (size_t i = numOfTransitionPoints; i < num_points; i++) {
-            dbscanPoints[i - numOfTransitionPoints][0] = points[i * 3 + pointComponentIdx];
-        }
-        float eps = 0.3;
-        size_t minPts = 15;
-        DBSCAN<float> dbscan(dbscanPoints, eps, minPts);
-        dbscan.run();
-        const auto& labels = dbscan.labels();
+        std::vector<float> peakVals(0, 0);
+        std::vector<float> intervalVals(0, 0);
+        peakFinder(points, num_points, numOfTransitionPoints, pointComponentIdx, localIntegrator,
+                   peakVals, intervalVals);
 
-        std::unordered_set<int> labelsSet(labels.begin(), labels.end());
-        std::vector<int> uniqueLabels(labelsSet.begin(), labelsSet.end());
-        std::sort(uniqueLabels.begin(), uniqueLabels.end());
-
-        std::vector<float> centers;
-
-        for (int lab : uniqueLabels) {
-            if (lab == dbscan.NOISY || lab == dbscan.UNCLASSIFIED)
-                continue;
-
-            std::vector<float> vals;
-            for (size_t i = 0; i < labels.size(); ++i) {
-                if (labels[i] == lab)
-                    vals.push_back(dbscanPoints[i][0]);
-            }
-
-            float mean = std::accumulate(vals.begin(), vals.end(), 0.0) / vals.size();
-            centers.push_back(mean);
+        std::vector<float> localData(peakVals.size() * 3, 0.f);
+        for (size_t i = 0; i < peakVals.size(); i++) {
+            localData[i * 3] = curConstant;
+            localData[i * 3 + 1] = peakVals[i];
+            localData[i * 3 + 2] = intervalVals[i];
         }
 
-        std::vector<float> localData;
-        localData.reserve(centers.size() * 2);
-        for (auto& c : centers) {
-            localData.push_back(curConstant);
-            localData.push_back(c);
-        }
         delete[] localIntegrator->C;
         delete[] points;
 
@@ -222,17 +239,29 @@ std::shared_ptr<std::vector<float>> SimulationCPU::createTwoDimBifurcatonDiagram
                 }
             } break;
             }
-            NDArray<float, 2> dbscanPoints({num_points - numOfTransitionPoints, 1});
-            for (size_t i = numOfTransitionPoints; i < num_points; i++) {
-                dbscanPoints[i - numOfTransitionPoints][0] = points[i * 3 + pointComponentIdx];
-            }
-            float eps = 0.3;
-            size_t minPts = 15;
-            DBSCAN<float> dbscan(dbscanPoints, eps, minPts);
-            dbscan.run();
+            std::vector<float> peakVals(0, 0);
+            std::vector<float> intervalVals(0, 0);
+            int peakFinderCode =
+                peakFinder(points, num_points, numOfTransitionPoints, pointComponentIdx,
+                           localIntegrator, peakVals, intervalVals);
+            if (peakFinderCode == 0) {
+                NDArray<float, 2> dbscanPoints({peakVals.size(), 2});
+                for (size_t i = 0; i < peakVals.size(); i++) {
+                    dbscanPoints[i][0] = peakVals[i];
+                    dbscanPoints[i][1] = intervalVals[i];
+                }
+                float eps = 0.3;
+                size_t minPts = 3;
+                DBSCAN<float> dbscan(dbscanPoints, eps, minPts);
+                dbscan.run();
 
-            (*out)[thread * numFirstValues + threadOuterLoop] =
-                static_cast<float>(dbscan.nClusters());
+                (*out)[thread * numFirstValues + threadOuterLoop] =
+                    static_cast<float>(dbscan.nClusters());
+            } else if (peakFinderCode == 1) {
+                (*out)[thread * numFirstValues + threadOuterLoop] = 10000;
+            } else if (peakFinderCode == 2) {
+                (*out)[thread * numFirstValues + threadOuterLoop] = 0;
+            }
 
             delete[] localIntegrator->C;
             delete[] points;
