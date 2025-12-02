@@ -28,14 +28,15 @@ class SimulationCPU {
     createOneDimLyapunovDiagram(const size_t num_points, const IntegratorType iType,
                                 const size_t parameterIdx, const size_t numOfConstants,
                                 const float minValue, const float maxValue, const float deltaValue,
-                                const std::array<size_t, 3> xyzOrder, std::string varSysCode);
+                                const std::array<size_t, 3> xyzOrder, std::string varSysCode,
+                                const size_t numOfTransitionPoints);
 
     std::shared_ptr<std::vector<float>> createTwoDimLyapunovDiagram(
         const size_t num_points, const IntegratorType iType, const size_t parameterIdx1,
         const size_t parameterIdx2, const size_t numOfConstants, const float minValue1,
         const float maxValue1, const float deltaValue1, const float minValue2,
         const float maxValue2, const float deltaValue2, const std::array<size_t, 3> xyzOrder,
-        std::string varSysCode);
+        std::string varSysCode, const size_t numOfTransitionPoints);
 
   public:
     std::unique_ptr<llvm::orc::LLJIT> jit;

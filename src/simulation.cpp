@@ -274,23 +274,19 @@ std::shared_ptr<std::vector<float>> SimulationCPU::createTwoDimBifurcatonDiagram
     return out;
 }
 
-static inline float computeLamda(std::unique_ptr<IntegratorCPU>& integrator,
-                                 std::vector<float>& varSysConsts, float* varSysVector,
-                                 integratedFunc varSysFunc) {
-    float varSysStep = integrator->step;
+static inline float computeLambda(std::unique_ptr<IntegratorCPU>& varSysIntegrator,
+                                  float* varSysVector) {
     // dt * Jacobian @ varSysVect
-    // float tmp[3] = {
-    //     varSysStep * (-a * varSysVector[0] + a * varSysVector[1]),
-    //     varSysStep *
-    //         ((1.f - cur_z) * varSysVector[0] + c * varSysVector[1] - cur_x * varSysVector[2]),
-    //     varSysStep * (cur_y * varSysVector[0] + cur_x * varSysVector[1] - b * varSysVector[2]),
-    // };
-    float tmp[3];
-    varSysFunc(varSysVector, varSysConsts.data(), tmp);
-
-    varSysVector[0] += tmp[0] * varSysStep;
-    varSysVector[1] += tmp[1] * varSysStep;
-    varSysVector[2] += tmp[2] * varSysStep;
+    float tmp[6];
+    varSysIntegrator->points = tmp;
+    varSysIntegrator->cur_step = 0;
+    tmp[0] = varSysVector[0];
+    tmp[1] = varSysVector[1];
+    tmp[2] = varSysVector[2];
+    integrator_rk4_step(varSysIntegrator);
+    varSysVector[0] = tmp[3];
+    varSysVector[1] = tmp[4];
+    varSysVector[2] = tmp[5];
 
     // normalize(varSysVect)
     float norm = std::sqrtf(varSysVector[0] * varSysVector[0] + varSysVector[1] * varSysVector[1] +
@@ -299,18 +295,14 @@ static inline float computeLamda(std::unique_ptr<IntegratorCPU>& integrator,
     varSysVector[1] /= norm;
     varSysVector[2] /= norm;
 
-    // if (std::isnan(std::logf(std::max<float>(norm, 1.)))) {
-    //     std::cout << norm << std::endl;
-    //     std::cout << varSysVector[0] << ' ' << varSysVector[1] << ' ' << varSysVector[2];
-    // }
-
     return std::logf(norm);
 }
 
 std::shared_ptr<std::vector<float>> SimulationCPU::createOneDimLyapunovDiagram(
     const size_t num_points, const IntegratorType iType, const size_t parameterIdx,
     const size_t numOfConstants, const float minValue, const float maxValue, const float deltaValue,
-    const std::array<size_t, 3> xyzOrder, std::string varSysCode) {
+    const std::array<size_t, 3> xyzOrder, std::string varSysCode,
+    const size_t numOfTransitionPoints) {
     size_t numThreads = (size_t)((maxValue - minValue) / deltaValue);
     auto out = std::make_shared<std::vector<float>>((numThreads + 1) * 2);
     std::default_random_engine generator(42);
@@ -343,61 +335,83 @@ std::shared_ptr<std::vector<float>> SimulationCPU::createOneDimLyapunovDiagram(
             distribution(generator),
             distribution(generator),
         };
+        float initNorm =
+            std::sqrtf(varSysVector[0] * varSysVector[0] + varSysVector[1] * varSysVector[1] +
+                       varSysVector[2] * varSysVector[2]);
+        varSysVector[0] /= initNorm;
+        varSysVector[1] /= initNorm;
+        varSysVector[2] /= initNorm;
         float lambdaSum = 0.f;
         std::vector<float> varSysConsts(numOfConstants + 3);
         for (size_t i = 0; i < numOfConstants; i++) {
             varSysConsts[i] = localIntegrator->C[i];
         }
 
+        std::unique_ptr<IntegratorCPU> varSysIntegrator = std::make_unique<IntegratorCPU>();
+        varSysIntegrator->C = varSysConsts.data();
+        varSysIntegrator->cur_step = 0;
+        varSysIntegrator->step = localIntegrator->step;
+        varSysIntegrator->func = varSysFunc;
+
         switch (iType) {
         case EULER: {
             for (size_t i = 0; i < num_points - 1; i++) {
                 integrator_euler_step(localIntegrator);
+                if (i < numOfTransitionPoints)
+                    continue;
                 size_t idx = 3 * localIntegrator->cur_step;
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                lambdaSum += computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                lambdaSum += computeLambda(varSysIntegrator, varSysVector);
             }
         } break;
         case RUNGE_KUTTA_4: {
             for (size_t i = 0; i < num_points - 1; i++) {
                 integrator_rk4_step(localIntegrator);
+                if (i < numOfTransitionPoints)
+                    continue;
                 size_t idx = 3 * localIntegrator->cur_step;
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                lambdaSum += computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                lambdaSum += computeLambda(varSysIntegrator, varSysVector);
             }
         } break;
         case MIDPOINT: {
             for (size_t i = 0; i < num_points - 1; i++) {
                 integrator_midpoint_step(localIntegrator);
+                if (i < numOfTransitionPoints)
+                    continue;
                 size_t idx = 3 * localIntegrator->cur_step;
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                lambdaSum += computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                lambdaSum += computeLambda(varSysIntegrator, varSysVector);
             }
         } break;
         case EULER_CROMER: {
             for (size_t i = 0; i < num_points - 1; i++) {
                 integrator_euler_cromer_step(localIntegrator);
+                if (i < numOfTransitionPoints)
+                    continue;
                 size_t idx = 3 * localIntegrator->cur_step;
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                lambdaSum += computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                lambdaSum += computeLambda(varSysIntegrator, varSysVector);
             }
         } break;
         case CD_METOD: {
             for (size_t i = 0; i < num_points - 1; i++) {
                 integrator_cd_step(localIntegrator);
+                if (i < numOfTransitionPoints)
+                    continue;
                 size_t idx = 3 * localIntegrator->cur_step;
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                 varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                lambdaSum += computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                lambdaSum += computeLambda(varSysIntegrator, varSysVector);
             }
         } break;
         }
@@ -418,7 +432,8 @@ std::shared_ptr<std::vector<float>> SimulationCPU::createTwoDimLyapunovDiagram(
     const size_t num_points, const IntegratorType iType, const size_t parameterIdx1,
     const size_t parameterIdx2, const size_t numOfConstants, const float minValue1,
     const float maxValue1, const float deltaValue1, const float minValue2, const float maxValue2,
-    const float deltaValue2, const std::array<size_t, 3> xyzOrder, std::string varSysCode) {
+    const float deltaValue2, const std::array<size_t, 3> xyzOrder, std::string varSysCode,
+    const size_t numOfTransitionPoints) {
     size_t numFirstValues = (size_t)((maxValue1 - minValue1) / deltaValue1) + 1;
     size_t numSecondValues = (size_t)((maxValue2 - minValue2) / deltaValue2) + 1;
     auto out = std::make_shared<std::vector<float>>(numFirstValues * numSecondValues);
@@ -457,66 +472,83 @@ std::shared_ptr<std::vector<float>> SimulationCPU::createTwoDimLyapunovDiagram(
                 distribution(generator),
                 distribution(generator),
             };
+            float initNorm =
+                std::sqrtf(varSysVector[0] * varSysVector[0] + varSysVector[1] * varSysVector[1] +
+                           varSysVector[2] * varSysVector[2]);
+            varSysVector[0] /= initNorm;
+            varSysVector[1] /= initNorm;
+            varSysVector[2] /= initNorm;
             float lambdaSum = 0.f;
             std::vector<float> varSysConsts(numOfConstants + 3);
             for (size_t i = 0; i < numOfConstants; i++) {
                 varSysConsts[i] = localIntegrator->C[i];
             }
 
+            std::unique_ptr<IntegratorCPU> varSysIntegrator = std::make_unique<IntegratorCPU>();
+            varSysIntegrator->C = varSysConsts.data();
+            varSysIntegrator->cur_step = 0;
+            varSysIntegrator->step = localIntegrator->step;
+            varSysIntegrator->func = varSysFunc;
+
             switch (iType) {
             case EULER: {
                 for (size_t i = 0; i < num_points - 1; i++) {
                     integrator_euler_step(localIntegrator);
+                    if (i < numOfTransitionPoints)
+                        continue;
                     size_t idx = 3 * localIntegrator->cur_step;
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                    lambdaSum +=
-                        computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                    lambdaSum += computeLambda(varSysIntegrator, varSysVector);
                 }
             } break;
             case RUNGE_KUTTA_4: {
                 for (size_t i = 0; i < num_points - 1; i++) {
                     integrator_rk4_step(localIntegrator);
+                    if (i < numOfTransitionPoints)
+                        continue;
                     size_t idx = 3 * localIntegrator->cur_step;
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                    lambdaSum +=
-                        computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                    lambdaSum += computeLambda(varSysIntegrator, varSysVector);
                 }
             } break;
             case MIDPOINT: {
                 for (size_t i = 0; i < num_points - 1; i++) {
                     integrator_midpoint_step(localIntegrator);
+                    if (i < numOfTransitionPoints)
+                        continue;
                     size_t idx = 3 * localIntegrator->cur_step;
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                    lambdaSum +=
-                        computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                    lambdaSum += computeLambda(varSysIntegrator, varSysVector);
                 }
             } break;
             case EULER_CROMER: {
                 for (size_t i = 0; i < num_points - 1; i++) {
                     integrator_euler_cromer_step(localIntegrator);
+                    if (i < numOfTransitionPoints)
+                        continue;
                     size_t idx = 3 * localIntegrator->cur_step;
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                    lambdaSum +=
-                        computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                    lambdaSum += computeLambda(varSysIntegrator, varSysVector);
                 }
             } break;
             case CD_METOD: {
                 for (size_t i = 0; i < num_points - 1; i++) {
                     integrator_cd_step(localIntegrator);
+                    if (i < numOfTransitionPoints)
+                        continue;
                     size_t idx = 3 * localIntegrator->cur_step;
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[0]] = points[idx + xyzOrder[0]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[1]] = points[idx + xyzOrder[1]];
                     varSysConsts[varSysConsts.size() - 3 + xyzOrder[2]] = points[idx + xyzOrder[2]];
-                    lambdaSum +=
-                        computeLamda(localIntegrator, varSysConsts, varSysVector, varSysFunc);
+                    lambdaSum += computeLambda(varSysIntegrator, varSysVector);
                 }
             } break;
             }

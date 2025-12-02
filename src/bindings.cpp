@@ -113,10 +113,10 @@ PYBIND11_MODULE(_dynsys, m) {
             [](SimulationCPU& self, const size_t num_points, const IntegratorType iType,
                const size_t parameterIdx, const size_t numOfConstants, const float minValue,
                const float maxValue, const float deltaValue, const std::array<size_t, 3> xyzOrder,
-               std::string varSysCode) {
-                auto data = self.createOneDimLyapunovDiagram(num_points, iType, parameterIdx,
-                                                             numOfConstants, minValue, maxValue,
-                                                             deltaValue, xyzOrder, varSysCode);
+               std::string varSysCode, const size_t numOfTransitionPoints) {
+                auto data = self.createOneDimLyapunovDiagram(
+                    num_points, iType, parameterIdx, numOfConstants, minValue, maxValue, deltaValue,
+                    xyzOrder, varSysCode, numOfTransitionPoints);
                 ssize_t rows = data->size() / 2, cols = 2;
                 return py::array(py::dtype::of<float>(), {rows, cols},
                                  {sizeof(float) * 2, sizeof(float)}, data->data());
@@ -124,6 +124,7 @@ PYBIND11_MODULE(_dynsys, m) {
             py::arg("steps"), py::arg("method"), py::arg("parameter_idx"),
             py::arg("num_of_constants"), py::arg("min_value"), py::arg("max_value"),
             py::arg("delta_value"), py::arg("xyz_order"), py::arg("var_sys_code"),
+            py::arg("num_transition_points"),
             R"pbdoc(
                 Make a 1D lyapunov diagram
                 Returns a NumPy array of shape (n, 2)
@@ -134,11 +135,12 @@ PYBIND11_MODULE(_dynsys, m) {
                const size_t parameterIdx1, const size_t parameterIdx2, const size_t numOfConstants,
                const float minValue1, const float maxValue1, const float deltaValue1,
                const float minValue2, const float maxValue2, const float deltaValue2,
-               const std::array<size_t, 3> xyzOrder, std::string varSysCode) {
+               const std::array<size_t, 3> xyzOrder, std::string varSysCode,
+               const size_t numOfTransitionPoints) {
                 auto data = self.createTwoDimLyapunovDiagram(
                     num_points, iType, parameterIdx1, parameterIdx2, numOfConstants, minValue1,
-                    maxValue1, deltaValue1, minValue2, maxValue2, deltaValue2, xyzOrder,
-                    varSysCode);
+                    maxValue1, deltaValue1, minValue2, maxValue2, deltaValue2, xyzOrder, varSysCode,
+                    numOfTransitionPoints);
                 size_t rows = (size_t)((maxValue2 - minValue2) / deltaValue2) + 1;
                 size_t cols = (size_t)((maxValue1 - minValue1) / deltaValue1) + 1;
                 return py::array(py::dtype::of<float>(), {rows, cols, static_cast<size_t>(1)},
@@ -149,7 +151,7 @@ PYBIND11_MODULE(_dynsys, m) {
             py::arg("parameter_idx2"), py::arg("num_of_constants"), py::arg("min_value1"),
             py::arg("max_value1"), py::arg("delta_value1"), py::arg("min_value2"),
             py::arg("max_value2"), py::arg("delta_value2"), py::arg("xyz_order"),
-            py::arg("var_sys_code"),
+            py::arg("var_sys_code"), py::arg("num_transition_points"),
             R"pbdoc(
                 Make a 2D Lyapunov diagram
                 Returns a NumPy array of shape (num_first_constant_vals, num_second_constant_vals, 1)

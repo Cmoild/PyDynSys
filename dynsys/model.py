@@ -198,6 +198,7 @@ class Model:
         constant_name: str,
         min_max_dt: tuple[float, float, float],
         var_sys_code: str,
+        num_transition_points: int = 0,
     ) -> NDArray[numpy.float32]:
         assert steps > 0, "steps must be positive int"
         assert constant_name in self.const_order, "invalid name of constant"
@@ -239,6 +240,7 @@ class Model:
             min_max_dt[2],
             xyz_order,
             c_code,
+            num_transition_points,
         )
 
     def lyapunov2d(
@@ -248,6 +250,7 @@ class Model:
         variable_name: str,
         constants_dict: dict[str, tuple[float, float, float]],
         var_sys_code: str,
+        num_transition_points: int = 0,
     ) -> NDArray[numpy.float32]:
         assert steps > 0, "steps must be positive int"
         assert len(constants_dict.keys()) == 2, "too many constants"
@@ -315,4 +318,5 @@ class Model:
             min_max_dt2[2],
             xyz_order,
             c_code,
+            num_transition_points,
         )
